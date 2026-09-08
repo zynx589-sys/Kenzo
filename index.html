@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>PairLink</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;height:100%;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f5f6f8;color:#15171a}
+.app{height:100dvh;max-width:760px;margin:auto;background:#fff;display:flex;flex-direction:column}
+header{height:68px;border-bottom:1px solid #e6e8ec;display:flex;align-items:center;justify-content:space-between;padding:0 16px}
+.brand{font-weight:750;font-size:20px}.state{font-size:12px;margin-top:2px}.waiting{color:#a17400}.connected{color:#188038}.offline{color:#c5221f}
+.share{border:0;background:#15171a;color:#fff;border-radius:18px;padding:9px 13px;font-weight:650}
+#messages{flex:1;overflow:auto;padding:18px 14px;display:flex;flex-direction:column;gap:9px}
+.bubble{max-width:78%;padding:10px 13px;border-radius:17px;line-height:1.4;overflow-wrap:anywhere}.mine{align-self:flex-end;background:#15171a;color:#fff;border-bottom-right-radius:5px}.theirs{align-self:flex-start;background:#eef0f3;border-bottom-left-radius:5px}
+.empty{margin:auto;text-align:center;color:#969ca5;font-size:14px}
+form{display:flex;gap:8px;border-top:1px solid #e6e8ec;padding:10px 12px calc(10px + env(safe-area-inset-bottom))}
+input{min-width:0;flex:1;border:1px solid #dce0e5;border-radius:23px;padding:12px 15px;font-size:16px;outline:none}
+button.send{border:0;border-radius:23px;padding:0 18px;background:#15171a;color:#fff;font-weight:650}
+.toast{position:fixed;left:50%;bottom:82px;transform:translateX(-50%);background:#15171a;color:#fff;padding:9px 13px;border-radius:10px;font-size:13px;display:none}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+ <div><div class="brand">PairLink</div><div id="state" class="state waiting">🟡 Waiting for someone…</div></div>
+ <button id="share" class="share">Share Link</button>
+</header>
+<div id="messages"><div id="empty" class="empty">Share this link with someone to start chatting.</div></div>
+<form id="form"><input id="text" placeholder="Message…" autocomplete="off"><button class="send">Send</button></form>
+</div>
+<div id="toast" class="toast"></div>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+const state=document.getElementById('state'),messages=document.getElementById('messages'),empty=document.getElementById('empty');
+const form=document.getElementById('form'),input=document.getElementById('text'),share=document.getElementById('share'),toast=document.getElementById('toast');
+let peer,conn=null,queue=[]; const target=location.hash.slice(1);
+
+function setState(type,text){
+ state.className='state '+type; state.textContent=text;
+}
+function notice(t){toast.textContent=t;toast.style.display='block';clearTimeout(notice.t);notice.t=setTimeout(()=>toast.style.display='none',1600)}
+function add(text,mine){empty.style.display='none';const d=document.createElement('div');d.className='bubble '+(mine?'mine':'theirs');d.textContent=text;messages.appendChild(d);messages.scrollTop=messages.scrollHeight}
+function attach(c){
+ conn=c;
+ c.on('open',()=>{
+   setState('connected','🟢 Connected — other person is online');
+   queue.forEach(x=>c.send(x)); queue=[];
+ });
+ c.on('data',d=>{if(typeof d==='string')add(d,false)});
+ c.on('close',()=>{conn=null;setState('offline','🔴 Disconnected')});
+ c.on('error',()=>setState('offline','🔴 Connection error'));
+ if(c.open){setState('connected','🟢 Connected — other person is online')}
+}
+function start(){
+ peer=new Peer();
+ peer.on('open',id=>{
+   if(!target){
+     history.replaceState(null,'',location.pathname+'#'+id);
+     setState('waiting','🟡 Waiting for someone…');
+   }else{
+     setState('waiting','🟡 Connecting…');
+     attach(peer.connect(target,{reliable:true}));
+   }
+ });
+ peer.on('connection',c=>{if(!conn)attach(c)});
+ peer.on('error',e=>{
+   console.log(e);
+   if(e.type==='peer-unavailable')setState('offline','🔴 Link unavailable / person offline');
+   else setState('offline','🔴 Connection error');
+ });
+}
+share.onclick=async()=>{
+ try{
+  if(navigator.share) await navigator.share({title:'PairLink Chat',url:location.href});
+  else{await navigator.clipboard.writeText(location.href);notice('Link copied')}
+ }catch(e){}
+};
+form.onsubmit=e=>{
+ e.preventDefault();const t=input.value.trim();if(!t)return;
+ add(t,true);input.value='';
+ if(conn&&conn.open)conn.send(t);else queue.push(t);
+ input.focus();
+};
+start();
+</script>
+</body>
+</html>
